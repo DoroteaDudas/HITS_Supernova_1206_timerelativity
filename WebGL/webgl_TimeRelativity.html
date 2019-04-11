@@ -1,0 +1,1844 @@
+<!DOCTYPE html>
+<!-- @author: Dorotea Dudas	@date 20/02/18 -->
+<html lang="en">
+	<head>
+		<title>Time Relativity</title>
+		<meta charset="utf-8"><meta name="author" content="Dorotea Dudas"><meta name="date" content="20-02-2018"> <!--scheme="DD-MM-YYYY"-->
+		<style>
+			body {
+				font-family: "HelveticaNeueLT Com 55 Roman", "Helvetica Neue LT Com", sans-serif;/*"Helvetica Neue LT Com", sans-serif;*//*"HelveticaNeueLT Com 45 Lt", "Helvetica Neue LT Com", sans-serif;*/
+				margin: 0px;
+				background-color: #000000;
+				overflow: hidden;
+				visibility:hidden;				
+			}
+			
+			#radioSetup{
+				right		: -12px;
+				bottom		: 270px;
+				width		: 165px;
+				height		: 720px;
+				z-index		: 2;
+				position	: absolute;				
+				font-size	: 70%;
+				color		: #BDBDBD;
+				background	: rgba(128,128,128,0.0);
+				padding		: 5px;
+				padding-top	: 4px;
+				padding-bottom	: 4px;
+				border-radius	: 10px;
+				border-color	: black;
+				border-style	: solid;
+				border-width	: 0px;		
+				text-align	: center;
+			}	
+			#radioSetup .ui-button.ui-state-active {
+				background-color: rgba(128,128,256,0.3);
+				color		: #ffffff;
+			}
+			#radioSetup .ui-button {
+				background-color: rgba(128,128,128,0.0);
+				border-color	: rgba(128,128,128,0.0);
+				color		: #ffffff;
+			}	
+			
+			#blob {
+				position	: absolute;
+				float		: left;
+				z-index		: 2;
+				font-size	: 134%;
+				width		: 200px;
+				color		: #000000;
+				background	: rgba(128,128,128,0.8);
+				padding		: 5px;
+				padding-top	: 5px;
+				padding-bottom	: 5px;
+				border-radius	: 10px;
+				border-color	: black;
+				border-style	: solid;
+				border-width	: 2px; 
+			}
+
+			/*standard buttons*/
+			/*vertical alignment of the image within a div*/
+			.helper {
+				display: inline-block;
+				height: 100%;
+				vertical-align: middle;
+			}			
+			
+			/*dialog*/
+			.dlg-no-title .ui-dialog-titlebar {
+				display: none;
+			}			
+			.ui-widget-content.ui-dialog {
+				background	: rgba(128,128,128,0.0) !important;
+				border		: 2px solid rgba(128,128,128,0.0);
+				/*place the dialog on the top of all buttons*/
+				position	: relative;
+				z-index		: 10;				
+ 			} 
+			#dialogHelp {
+				position	: relative;
+				z-index		: 2;
+				font-size	: 150%;
+				color		: #BDBDBD;
+				background	: rgba(128,128,128,0.6);
+			} 			
+			
+			/* zoom */
+			#radioSetup {/*GUI scale*/
+				transform: scale(0.75);
+				transform-origin: 0% 100%;
+			}
+		</style>
+		<link  href="scripts/jquery-ui.css" rel="stylesheet">
+		<script src="scripts/jquery-1.9.1.js"></script>
+		<script src="scripts/jquery-ui.js"></script>	
+	</head>
+	<body>
+		<div id="container"></div>
+		<div id="radioSetup">
+			<br><br>
+			<p>&nbsp;</p>
+			<p>&nbsp;</p>
+			<p>&nbsp;</p>
+			<p>&nbsp;</p>
+			<input type="radio" id="radio4m" name="radioSetupOptions" ><label for="radio4m"></label>
+			<input type="radio" id="radio3m" name="radioSetupOptions" ><label for="radio3m"></label>
+			<input type="radio" id="radio2m" name="radioSetupOptions" ><label for="radio2m"></label> <!--checked="checked"-->	
+			<input type="radio" id="radio1m" name="radioSetupOptions" ><label for="radio1m"></label>		
+			<!-- 	<input type="radio" id="radio5m" name="radioSetupOptions" ><label for="radio5m"></label> -->
+			<!-- 	<input type="radio" id="radio6m" name="radioSetupOptions" ><label for="radio6m"></label> -->
+		</div>			
+		<div id="blob" valign="top"></div><!-- text blob -->
+		
+		<div id="resetButton"></div>
+		<div id="languageButton"></div>
+		<div id="dialogHelp" title="Dialog" align="center" ></div>	
+		<div id="infoButton"></div>	
+	
+		
+		<script src="scripts/three71.min.js"></script>
+		<script src="scripts/TrackballControls.js"></script>
+
+
+		<script id="vertexShader" type="x-shader/x-vertex">				//used by clock and background shaders
+			varying vec2 vUv;//simplest shader
+ 			void main(){
+				  vUv = uv;
+				  gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+ 			}
+		</script>
+		<script id="fragmentShaderClock" type="x-shader/x-vertex">			//clock
+			uniform float time;
+			uniform float basetime;
+			uniform vec2 mouse;//just feed touch move to mouse
+			varying vec2 vUv;
+		
+			//clock////////////////////////////////////////
+			#define SHARPNESS 450.
+			float PI = 3.141592653589793238462;
+			#define clamps(x) clamp(x,0.,1.)
+			vec2 rotation(in float angle,in vec2 position) {
+				float rot = radians(angle*360.);
+				mat2 rotation = mat2(cos(rot), -sin(rot), sin(rot), cos(rot));
+				return vec2(position*rotation);
+			}
+			float distshape(vec2 uv, float sides) { //http://patriciogonzalezvivo.com/2015/thebookofshaders/07/
+				float angle = atan(uv.x,uv.y)+PI;
+				float r = (PI*2.)/sides;
+				return cos(floor(.5+angle/r)*r-angle)*length(uv);
+			}
+			float distanceToSegment( in vec2 p, in vec2 a, in vec2 b ) {
+				//Iq's function (I use this for smooth lines)
+				vec2 pa = p-a;
+				vec2 ba = b-a;
+				float h = clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0);
+				return length( pa - ba*h );
+			}
+			vec2 cossin(float a) {//Circle
+// 				return vec2(-sin(a*2.*PI),cos(a*2.*PI));//flipped - starts at the "bottom"
+				return vec2(sin(a*2.*PI),-cos(a*2.*PI));
+			}
+			float clock(vec2 suv,float sharp,float time_warped) {//Clock drawing function
+				float atans = (atan(suv.x,suv.y)+PI)/(PI*2.); //Degrees in 0 to 1
+				float drawing = clamps(1.-((length(suv)-0.45)*sharp)); //Make circle
+				drawing -= clamps(1.-((length(suv)-0.4)*sharp)); //Remove inner
+				drawing += clamps(1.-((length(suv)-0.01)*sharp)); //Middle joint circle
+				//Set thickness
+				float dist = 0.35;
+				
+				//Second hand
+				drawing += clamps(1.-((distanceToSegment(suv,vec2(0.),cossin(-(time_warped/60.))*dist)-0.002)*sharp));
+				//Thin thickness
+				dist -= 0.05;
+				//Minute hand
+				drawing += clamps(1.-((distanceToSegment(suv,vec2(0.),cossin(-(time_warped/3600.))*dist)-0.003)*sharp));
+				//Thin thickness
+				dist -= 0.05;
+				//Hour hand
+				drawing += clamps(1.-((distanceToSegment(suv,vec2(0.),cossin(-(time_warped/43200.))*dist)-0.005)*sharp));
+
+				//5 minutes lines
+				//float ats = fract((atans*12.)-.5)-0.5;
+				float sides = 12.;
+				float a1 = floor((atans*sides)-.5)/sides;
+				float ats = rotation(a1+(1./sides),suv*sides).x*.1;
+				float ats2 = distshape(suv,sides);    
+				drawing += clamps(1.-((distanceToSegment(vec2(ats,ats2),vec2(0.,0.30),vec2(0.,0.37))-0.003)*sharp));
+				//Secounds lines
+				sides = 12.*5.;
+				a1 = floor((atans*sides)-.5)/sides;
+				ats = rotation(a1+(1./sides),suv*sides).x*.02;
+				ats2 = distshape(suv,sides);    
+				float ats3 = step((1./12.)*2.,fract((atans*12.)+(1./12.)));
+				if (ats3 == 1.) { //Do not draw on 5 minutes lines.
+					drawing += clamps(1.-((distanceToSegment(vec2(ats,ats2),vec2(0.,0.35),vec2(0.,0.37))-0.003)*sharp));
+				}
+				return clamps(drawing);
+			}			
+
+			//circle////////////////////////////////////////
+			vec4 circle(vec2 p, vec2 center, float radius) {
+				return mix(vec4(1,1,1,0), vec4(1,0,0,1), smoothstep(radius + 0.005, radius - 0.005, length(p - center)));
+			}
+			vec4 circle2(vec2 p, vec2 center, float radius) {
+				return mix(vec4(1,1,1,0), vec4(1,0,0,1), smoothstep(radius + 0.005, radius - 0.005, length(p - center)));
+			}
+
+			void main(){
+				//coordinates: vUv
+				//uv 		-> (*16/9, -) for clock, circle, mouse
+				//vUvTemp	-> (*16/9, +) for gravity effect
+				//vUvTemp2	-> (     , -) for texture
+				//mtemp		-> (*16/9)    for mouse.x
+				
+				vec2 uv 	= vec2(vUv.x*16./9.,-vUv.y);//		 		-> for clock, mouse, circle
+// 				vec2 vUvTemp 	= vec2(vUv.x,vUv.y);//					-> for gravity effect
+				vec2 vUvTemp 	= vec2(vUv.x*16./9.,vUv.y);//				-> for black hole effect
+				vec2 vUvTemp2 	= vec2(vUv.x,-vUv.y);//normal, negative 		-> for texture
+
+				
+				////////////clock
+				//red clock (orange)
+				//position 
+				float mtemp = mouse.x*16./9.;//for the touch - same as for the mouse - circle and clock have different coordinates 
+
+				vec2 red_center = vec2(mtemp, -mouse.y);
+				vec4 red_circle = circle(uv, red_center, 0.075);//size of the clock circle
+// 				vec2 suv =  10.*vec2(uv.x - mtemp,uv.y + mouse.y);//smaller clock
+				vec2 suv =  6.5*vec2(uv.x - mtemp,uv.y + mouse.y);//bigger clock
+				float red_clock = clock(suv,SHARPNESS,-time);//red clock
+
+				//blue clock
+				//clock to bottom-right
+				float clockX = 1.672;//16:9=1.77	;	1.77 - 11 = 1.66
+				float clockY = 0.11;
+
+				vec2 blue_center = vec2(clockX, -clockY);
+				vec4 blue_circle = circle2(vec2(uv.x,uv.y), blue_center, 0.05);//size of the clock circle
+				vec2 suv2 =  6.5*vec2((uv.x-clockX),uv.y+clockY);//upper left corner //bigger clock
+				float blue_clock = clock(suv2,SHARPNESS,-basetime);//blue clock
+				//////////////
+
+				//clocks visible, nice intersection, partially transparent background, works, blue(cyan) and orange clock
+				gl_FragColor = vec4(red_clock, red_clock - 0.5 + 1.2*blue_clock, blue_clock, (red_clock + blue_clock) + 0.8*(red_circle.a + blue_circle.a)); 
+			}	
+		</script>	
+		<script id="fragmentShaderGravityWarp" type="x-shader/x-vertex">		//background
+			uniform sampler2D tDiffuse2;//background
+			uniform vec2 points[ARRAYMAX];
+			uniform float scaleWarp1[ARRAYMAX];
+			uniform float scaleWarp2[ARRAYMAX];	
+			varying vec2 vUv;
+
+			void main(){
+				//coordinates: vUv
+				//uv 		-> (*16/9, -) for clock, circle, mouse
+				//vUvTemp	-> (*16/9, +) for gravity effect
+				//vUvTemp2	-> (     , -) for texture
+				
+				vec2 uv 	= vec2(vUv.x*16./9.,-vUv.y);//		 		-> for clock, mouse, circle
+				vec2 vUvTemp 	= vec2(vUv.x*16./9.,vUv.y);//				-> for gravity effect
+// 				vec2 vUvTemp2 = vec2(vUv.x,-vUv.y);//normal, negative 			-> for texture
+				vec2 vUvTemp2 = vec2(vUv.x, vUv.y);//normal, normal 			-> for texture (but then change the addition of warp too)
+				
+				float ptemp = 1.0;
+				vec2 position, warp;
+				for(int i=0;i<ARRAYMAX;i++){
+					position = vec2(points[i].x,points[i].y);
+					warp = normalize(position.xy - vUvTemp) * pow(distance(position.xy, vUvTemp), -2.0) * scaleWarp1[i]; //2560 x 1440
+					warp.y = -warp.y;
+					vUvTemp2.x += warp.x;vUvTemp2.y -= warp.y;//if no -y
+					float light = clamp(scaleWarp2[i]*distance(position.xy, vUvTemp) - 1.5, 0.0, 1.0);//40 60 //2560 x 1440
+					ptemp*=light;
+				}
+				vec4 color = texture2D(tDiffuse2, vUvTemp2);	
+				gl_FragColor = color*ptemp;//no clock
+			}	
+		</script>		
+
+		<script id="fragmentShaderStar" type="x-shader/x-fragment">			//materialSun (star)
+			varying vec2 vUv;
+			varying float noise;
+			uniform sampler2D texture1;
+			uniform sampler2D texture2;
+			uniform float time;
+			varying vec3 vNormal;
+			
+			float random( vec3 scale, float seed ){
+				return fract( sin( dot( gl_FragCoord.xyz + seed, scale ) ) * 43758.5453 + seed ) ;
+			}
+			void main() {
+				float r = .01 * random( vec3( 12.9898, 78.233, 151.7182 ), 0.0 );// get a random offset
+				// lookup vertically in the texture, using noise and offset to get the right RGB colour
+				vec2 tPos = vec2( 0, 1.9 * noise + r );
+				vec4 color = texture2D( texture2, tPos );
+				gl_FragColor = vec4( color.rgb, 1.0 );
+				
+				//lava
+				vec2 position = -1.0 + 2.0 * vUv;
+				vec4 noise2 = texture2D( texture1, vUv );
+				vec2 T1 = vUv + vec2( 1.5, -1.5 ) * time * 0.02;
+				vec2 T2 = vUv + vec2( -0.5, 2.0 ) * time * 0.01;
+				T1.x += noise2.x * 2.0;
+				T1.y += noise2.y * 2.0;
+				T2.x -= noise2.y * 0.2;
+				T2.y += noise2.z * 0.2;
+				float p = texture2D( texture1, T1 * 2.0 ).a;//t1
+				color = texture2D( texture2, T1 * 1.0 );//vec4 //t2 2.0
+				vec4 temp = color * ( vec4( p, p, p, p ) * 2.0 ) + ( color * color - 0.1 );
+				if( temp.r > 1.0 ){ temp.bg += clamp( temp.r - 2.0, 0.0, 100.0 ); }
+				if( temp.g > 1.0 ){ temp.rb += temp.g - 1.0; }
+				if( temp.b > 1.0 ){ temp.rg += temp.b - 1.0; }
+				gl_FragColor = temp;
+				gl_FragColor = mix( gl_FragColor, vec4(color.rgb, gl_FragColor.w ), 0.95 );//good, but a bit weird
+			}
+		</script>
+		<script id="vertexShaderStar" type="x-shader/x-vertex">				//materialSun (star)
+			//attribute float displacement;
+			varying vec3 vNormal;
+			uniform float time;
+			varying vec2 vUv;
+			
+			//perlin noise for playing around
+
+			// GLSL textureless classic 3D noise "cnoise", with an RSL-style periodic variant "pnoise".
+			// Author: Stefan Gustavson (stefan.gustavson@liu.se)
+			// Version: 2011-10-11
+			// Many thanks to Ian McEwan of Ashima Arts for the ideas for permutation and gradient selection.
+			//
+			// Copyright (c) 2011 Stefan Gustavson. All rights reserved. Distributed under the MIT license. See LICENSE file.
+			// https://github.com/ashima/webgl-noise
+			//
+			vec3 mod289(vec3 x) {
+				return x - floor(x * (1.0 / 289.0)) * 289.0;
+			}
+			vec4 mod289(vec4 x) {
+				return x - floor(x * (1.0 / 289.0)) * 289.0;
+			}
+			vec4 permute(vec4 x) {
+				return mod289(((x*34.0)+1.0)*x);
+			}
+			vec4 taylorInvSqrt(vec4 r) {
+				return 1.79284291400159 - 0.85373472095314 * r;
+			}
+			vec3 fade(vec3 t) {
+				return t*t*t*(t*(t*6.0-15.0)+10.0);
+			}
+			
+			float pnoise(vec3 P, vec3 rep) {// Classic Perlin noise, periodic variant
+				vec3 Pi0 = mod(floor(P), rep); // Integer part, modulo period			//cnoise: vec3 Pi0 = floor(P); // Integer part for indexing
+				vec3 Pi1 = mod(Pi0 + vec3(1.0), rep); // Integer part + 1, mod period		//cnoise: vec3 Pi1 = Pi0 + vec3(1.0); // Integer part + 1
+				Pi0 = mod289(Pi0);
+				Pi1 = mod289(Pi1);
+				vec3 Pf0 = fract(P); // Fractional part for interpolation
+				vec3 Pf1 = Pf0 - vec3(1.0); // Fractional part - 1.0
+				vec4 ix = vec4(Pi0.x, Pi1.x, Pi0.x, Pi1.x);
+				vec4 iy = vec4(Pi0.yy, Pi1.yy);
+				vec4 iz0 = Pi0.zzzz;
+				vec4 iz1 = Pi1.zzzz;
+
+				vec4 ixy = permute(permute(ix) + iy);
+				vec4 ixy0 = permute(ixy + iz0);
+				vec4 ixy1 = permute(ixy + iz1);
+
+				vec4 gx0 = ixy0 * (1.0 / 7.0);
+				vec4 gy0 = fract(floor(gx0) * (1.0 / 7.0)) - 0.5;
+				gx0 = fract(gx0);
+				vec4 gz0 = vec4(0.5) - abs(gx0) - abs(gy0);
+				vec4 sz0 = step(gz0, vec4(0.0));
+				gx0 -= sz0 * (step(0.0, gx0) - 0.5);
+				gy0 -= sz0 * (step(0.0, gy0) - 0.5);
+
+				vec4 gx1 = ixy1 * (1.0 / 7.0);
+				vec4 gy1 = fract(floor(gx1) * (1.0 / 7.0)) - 0.5;
+				gx1 = fract(gx1);
+				vec4 gz1 = vec4(0.5) - abs(gx1) - abs(gy1);
+				vec4 sz1 = step(gz1, vec4(0.0));
+				gx1 -= sz1 * (step(0.0, gx1) - 0.5);
+				gy1 -= sz1 * (step(0.0, gy1) - 0.5);
+
+				vec3 g000 = vec3(gx0.x,gy0.x,gz0.x);
+				vec3 g100 = vec3(gx0.y,gy0.y,gz0.y);
+				vec3 g010 = vec3(gx0.z,gy0.z,gz0.z);
+				vec3 g110 = vec3(gx0.w,gy0.w,gz0.w);
+				vec3 g001 = vec3(gx1.x,gy1.x,gz1.x);
+				vec3 g101 = vec3(gx1.y,gy1.y,gz1.y);
+				vec3 g011 = vec3(gx1.z,gy1.z,gz1.z);
+				vec3 g111 = vec3(gx1.w,gy1.w,gz1.w);
+
+				vec4 norm0 = taylorInvSqrt(vec4(dot(g000, g000), dot(g010, g010), dot(g100, g100), dot(g110, g110)));
+				g000 *= norm0.x;
+				g010 *= norm0.y;
+				g100 *= norm0.z;
+				g110 *= norm0.w;
+				vec4 norm1 = taylorInvSqrt(vec4(dot(g001, g001), dot(g011, g011), dot(g101, g101), dot(g111, g111)));
+				g001 *= norm1.x;
+				g011 *= norm1.y;
+				g101 *= norm1.z;
+				g111 *= norm1.w;
+
+				float n000 = dot(g000, Pf0);
+				float n100 = dot(g100, vec3(Pf1.x, Pf0.yz));
+				float n010 = dot(g010, vec3(Pf0.x, Pf1.y, Pf0.z));
+				float n110 = dot(g110, vec3(Pf1.xy, Pf0.z));
+				float n001 = dot(g001, vec3(Pf0.xy, Pf1.z));
+				float n101 = dot(g101, vec3(Pf1.x, Pf0.y, Pf1.z));
+				float n011 = dot(g011, vec3(Pf0.x, Pf1.yz));
+				float n111 = dot(g111, Pf1);
+
+				vec3 fade_xyz = fade(Pf0);
+				vec4 n_z = mix(vec4(n000, n100, n010, n110), vec4(n001, n101, n011, n111), fade_xyz.z);
+				vec2 n_yz = mix(n_z.xy, n_z.zw, fade_xyz.y);
+				float n_xyz = mix(n_yz.x, n_yz.y, fade_xyz.x);
+				return 2.2 * n_xyz;
+			}
+			varying float noise;
+			float turbulence( vec3 p ) {
+				float w = 100.0;
+				float t = -.5;
+				for (float f = 1.0 ; f <= 10.0 ; f++ ){
+					float power = pow( 2.0, f );
+					t += abs( pnoise( vec3( power * p ), vec3( 10.0, 10.0, 10.0 ) ) / power );//no idea what pnoise is 
+				}
+				return t;
+			}
+
+ 			void main() {
+				vUv = uv;
+				vNormal = normalize( normal );//for SunShader
+				
+				noise = 10.0 * (-0.10) * turbulence( .5 * normal + time);// get a turbulent 3d noise using the normal, normal to high freq
+				float b = 5.0 * pnoise( 0.05 * position + vec3( 2.0 * time ), vec3( 100.0 ) );// get a 3d noise using the position, low frequency
+				float displacement2 = - noise + b;// compose both noises
+				
+				// move the position along the normal and transform it
+				vec3 newPosition = position + normal * ( displacement2 * 0.03);//displacement
+				gl_Position = projectionMatrix * modelViewMatrix * vec4( newPosition, 1.0 );
+// 				gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+			}	
+ 		</script>	
+	
+		<script id="vertexShaderBlackHole" type="x-shader/x-vertex">			//shaderMaterialBlackHole
+			varying vec2 vUv;
+			void main(){
+ 				vUv = uv;
+				vec4 mvPosition = modelViewMatrix * vec4(position, 1.0 );
+				gl_Position = projectionMatrix * mvPosition;
+			}
+		</script>
+		<script id="fragmentShaderBlackHole" type="x-shader/x-fragment">		//shaderMaterialBlackHole
+			varying vec2 vUv;
+			uniform float time;
+ 			uniform vec2 resolution;
+			uniform sampler2D texture1;
+			uniform sampler2D texture2;
+			uniform float mouseX;
+			uniform float mouseY;
+
+			// My edit of https://www.shadertoy.com/view/XdjXDy
+			// So yeah, thank bloodnok for this brilliant shader, not me. The original one just had some visual problems which I corrected
+			// Or I should probably say; 'corrected' to fit my own taste. So don't praise me, praise bloodnok
+			const float pi = 3.1415927;
+			float sdSphere( vec3 p, float s ){
+				return length(p)-s;
+			}
+			float sdTorus( vec3 p, vec2 t )	{
+				vec2 q = vec2(length(p.xz)-t.x,p.y);
+				return length(q)-t.y;
+			}
+			
+			void main() {
+				//black hole
+				vec2 pp = -1.0 + 2.0 * vUv;//gl_FragCoord.xy/resolution.x;
+				pp.x *= resolution.x/resolution.y;
+				vec3 lookAt = vec3(0.0, 0.0, 0.0);
+				
+				float eyer = 3.0;//2.0
+				float eyea = (mouseX / resolution.x) * pi * 2.0;
+				float eyea2 = ((mouseY / resolution.y)-0.21) * pi * 2.0;
+				vec3 ro = vec3(eyer * cos(eyea) * sin(eyea2),eyer * cos(eyea2),eyer * sin(eyea) * sin(eyea2)); //camera position
+				
+				vec3 front = normalize(lookAt - ro);
+				vec3 left = normalize(cross(normalize(vec3(0.0,1,-0.1)), front));
+				vec3 up = normalize(cross(front, left));
+				vec3 rd = normalize(front*1.5 + left*pp.x + up*pp.y); // rect vector //1.5 (size)
+				
+				vec3 bh = vec3(0.0,0.0,0.0);
+				float bhr = 0.1;
+				float bhmass = 5.0;
+				bhmass *= 0.001; // premul G
+				vec3 p = ro;
+				vec3 pv = rd;
+				float dt = 0.02;
+				vec3 col = vec3(0.0);
+				vec3 col2 = vec3(0.0);//for red-shift
+				float noncaptured = 1.0;
+				vec3 c1 = vec3(0.5,0.35,0.1);//colors
+				vec3 c2 = vec3(1.0,0.8,0.6);
+				vec3 c1b = vec3(2.9,2.3,0.0);//for red-shift
+				vec3 c2b = vec3(0.0,2.0,5.0);//for red-shift
+				c2b+=vec3(gl_FragCoord.x/(resolution.x*4./30.),0.0,-gl_FragCoord.x/(resolution.x*4./30.));//for red-shift
+				
+				for(float t=0.0;t<1.0;t+=0.005){
+					p += pv * dt * noncaptured;
+					
+					// gravity
+					vec3 bhv = bh - p;
+					float r = dot(bhv,bhv);
+					pv += normalize(bhv) * ((bhmass) / r);
+
+					noncaptured = smoothstep(0.0, 0.366, sdSphere(p-bh,bhr));
+					
+					// Texture for the accretion disc
+					float dr = length(bhv.xz);
+					float da = atan(bhv.x,bhv.z);
+					vec2 ra = vec2(dr,da * (0.01 + (dr - bhr)*0.002) + 2.0 * pi + time *0.005);
+					ra *= vec2(10.0,20.0);
+					
+					vec3 dcol = mix(c2,c1,pow(length(bhv)-bhr,2.0)) * max(0.0,texture2D(texture2,ra*vec2(0.1,0.5)).r+0.05) * (4.0 / ((0.001+(length(bhv) - bhr)*20.0) ));
+					vec3 dcol2 = mix(c1b,c2b,pow(length(bhv)-bhr,2.0)) * max(0.0,texture2D(texture2,ra*vec2(0.1,0.5)).r+0.05) * (4.0 / ((0.001+(length(bhv) - bhr)*20.0) ));//for red-shift
+					col += max(vec3(0.0),dcol * smoothstep(0.0, 1.0, -sdTorus( (p * vec3(1.0,25.0,1.0)) - bh, vec2(0.8,0.99))) * noncaptured);
+					col2 += max(vec3(0.0),dcol2 * smoothstep(0.0, 1.0, -sdTorus( (p * vec3(1.0,25.0,1.0)) - bh, vec2(0.8,0.99))) * noncaptured);//for red-shift
+// 					col += dcol * (1.0/dr) * noncaptured * 0.01;
+					// Glow
+					col += vec3(0.3,0.2,0.1) * (0.1/vec3(dot(bhv,bhv))) * 0.0443 * noncaptured;
+					col2 += vec3(0.3,0.2,0.1) * (0.1/vec3(dot(bhv,bhv))) * 0.0443 * noncaptured;//for red-shift
+				}
+				
+				// BG
+				col += pow(texture2D(texture1,pv.xy).rgb,vec3(1.5));//works
+				col2 += pow(texture2D(texture1,pv.xy).rgb,vec3(1.5));//works//for red-shift
+				col2 *= vec3(1./10.,1./100.,1./1.);//works//for red-shift
+// 				col *= vec3(1.,1.,1.);//works
+				gl_FragColor = vec4(col,1.0);
+
+				{//for red-shift (colored black hole) - Commented Out
+// 				gl_FragColor = vec4(mix(col.rgb, vec3(col2.r*3.5,col2.g,col2.b), 0.7),1.0);
+				}
+				
+				if(gl_FragColor.r<0.55) gl_FragColor= vec4(1.0,0.0,0.0,0.0);//black set to (red) transparent to be used as a point cloud sprite
+			}
+		</script>
+		
+		<script id="vertexshaderPC" type="x-shader/x-vertex">				//RTT point cloud
+			attribute float size;
+			attribute vec3 customColor;
+			attribute float rotation;
+			attribute float texIndex;
+			
+			varying vec3 vColor;
+			varying float vRotation;
+			varying float vTexIndex;
+			
+			void main(void){
+				vColor = customColor;
+				vRotation = rotation;
+				vTexIndex = texIndex;
+				vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+				gl_PointSize = size * ( 100.0 / length( mvPosition.xyz ) );
+				gl_Position = projectionMatrix * mvPosition;
+			}
+		</script>
+		<script id="fragmentshaderPC" type="x-shader/x-fragment">			//RTT point cloud
+			uniform vec3 color;
+			uniform sampler2D texture;
+			uniform sampler2D texture2;
+			uniform sampler2D texture3;
+			uniform sampler2D texture4;
+			
+			varying vec3 vColor; 
+// 			varying float vRotation;			
+			varying float vTexIndex;
+			
+			void main(void){
+				vec2 uv = vec2(gl_PointCoord.x, 1.0 - gl_PointCoord.y);//flip the image		(vec2(gl_PointCoord.x, 1.0 - gl_PointCoord.y) / vec2(1.75,1.0);;//flip the image, elongate x)
+// 				uv.x += 0.22;//move back in x (see the gravitational warp)
+				gl_FragColor = vec4( color * vColor, 1.0 );
+				
+// 				//all 4 RTT texture together to check the size relations (comment out the lines below)
+// 				if(gl_PointCoord.x<0.5 && gl_PointCoord.y<0.5) gl_FragColor = gl_FragColor * texture2D( texture, uv );
+// 				if(gl_PointCoord.x>=0.5 && gl_PointCoord.y<0.5) gl_FragColor = gl_FragColor * texture2D( texture2, uv );
+// 				if(gl_PointCoord.x<0.5 && gl_PointCoord.y>=0.5) gl_FragColor = gl_FragColor * texture2D( texture3, uv );
+// 				if(gl_PointCoord.x>=0.5 && gl_PointCoord.y>=0.5) gl_FragColor = gl_FragColor * texture2D( texture4, uv );
+	
+				//set the point cloud texture according to vTexIndex 
+				if(vTexIndex<0.5) {						//star
+					gl_FragColor = gl_FragColor * texture2D( texture, uv );
+				}
+				if(vTexIndex>0.5 && vTexIndex<1.5) {				//earth
+					gl_FragColor = gl_FragColor * texture2D( texture2, uv );
+				}
+				if(vTexIndex>1.5 && vTexIndex<2.5) {				//black hole (2x darkens the non-black backgound nicely)
+					gl_FragColor = gl_FragColor * texture2D( texture3, uv );
+					gl_FragColor = gl_FragColor * texture2D( texture3, uv );
+				}
+				if(vTexIndex>2.5 && vTexIndex<3.5) {				//neutron star	
+					gl_FragColor = gl_FragColor * texture2D( texture4, uv );
+				}
+			}
+		</script>
+
+		
+		<script>//functions
+			function getUrlVars() {
+				var vars = {};
+				var parts = window.location.href.replace(/[?&]+([^=&]+)=([^&]*)/gi,    
+					function(m,key,value) {
+						vars[key] = value;
+					}
+				);
+				return vars;
+			}
+		
+			function getWindowDimensions(){
+				{//Width, Height
+				var w = window,
+					d = document,
+					e = d.documentElement,
+					g = d.getElementsByTagName('body')[0],
+					x = w.innerWidth || e.clientWidth || g.clientWidth,
+					y = w.innerHeight|| e.clientHeight|| g.clientHeight;
+				}	
+				
+				return {
+					width:  x,
+					height: y
+				}
+			}		
+			function InitThreeRenderer(Width, Height, divElement) {
+				renderer = new THREE.WebGLRenderer({antialias: true, logarithmicDepthBuffer: false,  preserveDrawingBuffer: true, alpha: true});//({antialias	: true});
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				divElement.appendChild( renderer.domElement );
+				
+				return{
+						renderer: renderer 
+				}				
+			}				
+			function InitThreeScene() {
+				scene1 = new THREE.Scene();		//main view
+			}		
+			function InitThreeLights(){//also RTT lights
+				var light0 = new THREE.AmbientLight( 0x545454 ); //soft white light
+				var light1 = new THREE.DirectionalLight( 0x888888, 2 );
+				light1.position.set( 1, 1, 1  ).normalize();
+				scene1.add(light0);
+				scene1.add(light1);	
+				
+				{//RTT
+				if(sceneRTT){
+					var light = new THREE.DirectionalLight( 0xffffff );
+					light.position.set( 0, 0, 1 ).normalize();
+					sceneRTT.add( light );
+
+					light = new THREE.DirectionalLight( 0xffaaaa, 1.5 );
+					light.position.set( 0, 0, -1 ).normalize();
+					sceneRTT.add( light );				
+				}	
+				if(sceneRTTEarth){
+					var light = new THREE.DirectionalLight( 0xffffff );
+					light.position.set( 0, 0, 1 ).normalize();
+					sceneRTTEarth.add( light );
+
+					light = new THREE.DirectionalLight( 0xffaaaa, 1.5 );
+					light.position.set( 0, 0, -1 ).normalize();
+					sceneRTTEarth.add( light );				
+				}
+				if(sceneRTTNeutronStar){
+					var light = new THREE.DirectionalLight( 0xffffff );
+					light.position.set( 0, 0, 1 ).normalize();
+					sceneRTTNeutronStar.add( light );
+
+					light = new THREE.DirectionalLight( 0xffaaaa, 1.5 );
+					light.position.set( 0, 0, -1 ).normalize();
+					sceneRTTNeutronStar.add( light );				
+				}	
+				}
+			}		
+			function InitCameras(){//controls
+				camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 1, 15000 );
+				camera.position.z = 445;//436 full; 437 1 pixel
+				SpreadPlaneToScreen(camera);
+				
+// 				controls = new THREE.TrackballControls( camera );
+			}
+			function InitThreeRTTScenes() {//RTT
+				//do not forget to set the lights for non-"planar shader" stuff
+				sceneRTT = new THREE.Scene();//has the shader star and its sprites 
+				sceneRTTEarth =  new THREE.Scene();//has the Earth
+				sceneRTTBlackHole = new THREE.Scene();//has the Black Hole
+				sceneRTTNeutronStar = new THREE.Scene();//has the White Dwarf
+			}			
+			function InitRTTCameras(){//RTT
+				//can control size using the perspective camera (but keep the aspect ratio to 1.0)
+				cameraRTT = new THREE.PerspectiveCamera( 70, 1.0, 1, 15000 );
+				cameraRTT.position.z = 1000;//436 full; 437 1 pixel
+				
+// 				SpreadPlaneToScreen(cameraRTT);//cameraRTT spread over the screen
+			}						
+			
+			function InitTestSphere(){
+				var material = new THREE.MeshBasicMaterial( {wireframe:true,  color: 0xaaaaaa } );
+				var geometry = new THREE.SphereGeometry( 30,16,16 );
+				mesh = new THREE.Mesh( geometry, material );
+				scene1.add( mesh );
+			}			
+			function InitShaderPlanes(){//background (gravity wells) and clock plane
+				var quadgeometry = new THREE.PlaneBufferGeometry(window.innerWidth, window.innerHeight);
+				var quad = new THREE.Mesh(quadgeometry, quadmaterial);
+				quad.position.z=10;//-500//in front of the point cloud		//-10;//-500//behind point cloud
+				scene1.add(quad);
+				
+				//background
+				var quad2 = new THREE.Mesh(quadgeometry, quadmaterial2);
+				quad2.position.z=-5;//behind point cloud
+				scene1.add(quad2);
+			}			
+			function InitPlanetSprite(){
+				var sprite = new THREE.Sprite( spriteMaterial );
+				sprite.scale.set(120 * window.innerWidth / window.innerHeight,120,1.0);
+				sprite.position.x = 0;//750;
+				sprite.position.y = 0;//-270;	
+				sprite.position.z = 100;//-500.0;
+				scene1.add(sprite);				
+			}
+		
+			//star
+			function InitCenter(){//goes to sceneRTT, RTT texutre
+				geometry_center = new THREE.SphereGeometry( scaleStarSphereSize, 32, 32 );
+				var material 	= new THREE.MeshLambertMaterial( { color: 0xFFFFFF}  );
+				center 		= new THREE.Mesh( geometry_center, materialSun );
+				sceneRTT.add( center );
+			}
+			function InitStarSprites(){//goes to sceneRTT, RTT texutre
+				// sun-sprite
+				sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+					map: texture_Sun_Sprite,
+					transparent: true,
+					blending: THREE.AdditiveBlending,
+					useScreenCoordinates: true,
+					color: 0xE86C19,//yellow
+					depthWrite: true,
+					depthTest: true,
+					alphaTest: 0.2
+				}));
+				sprite.scale.x = scaleStarSphereSize*1.0*4.5;
+				sprite.scale.y = scaleStarSphereSize*1.0*4.5;
+				sprite.scale.z = 1.;
+// 				scene1.add(sprite);
+				sceneRTT.add(sprite);
+// 				sprite.renderDepth=0;
+// 				scene2.add(sprite);
+
+				sprite2 = new THREE.Sprite(new THREE.SpriteMaterial({
+					map: texture_sprite2,
+					transparent: true,
+					blending: THREE.AdditiveBlending,
+					useScreenCoordinates: true,
+					color: 0xdddddd,//0xffffff
+					depthWrite: false,
+					depthTest: false,
+					alphaTest: 0.2, 
+	// 				rotation: Math.PI / 4,
+				}));
+				sprite2.scale.x = scaleStarSphereSize*2.7*4.5;
+				sprite2.scale.y = scaleStarSphereSize*2.7*4.5;
+				sprite2.scale.z = 1;
+// 				scene1.add(sprite2);
+				sceneRTT.add(sprite2);
+// 				scene2.add(sprite2);
+
+				sprite3 = new THREE.Sprite(new THREE.SpriteMaterial({
+					map: texture_sprite2,
+					transparent: true,
+					blending: THREE.AdditiveBlending,
+					useScreenCoordinates: true,
+					color: 0xE86C19,
+					depthWrite: false,
+					depthTest: true,
+					alphaTest: 0.2,
+				}));
+				sprite3.scale.x = scaleStarSphereSize*2.7*4.5;
+				sprite3.scale.y = scaleStarSphereSize*2.7*4.5;
+				sprite3.scale.z = 1;
+// 				sprite3.rotation.z = 90*Math.PI/180;//sprite.material.rotation
+// 				scene2.add(sprite3);
+// 				scene1.add(sprite3);
+				sceneRTT.add(sprite3);
+
+				sprite4 = new THREE.Sprite(new THREE.SpriteMaterial({
+					map: texture_sprite2,
+					transparent: true,
+					blending: THREE.AdditiveBlending,
+					useScreenCoordinates: true,
+					color: 0xE86C19,
+					depthWrite: false,
+					depthTest: true,
+					alphaTest: 0.2,
+				}));
+				sprite4.scale.x = scaleStarSphereSize*2.7*4.5;
+				sprite4.scale.y = scaleStarSphereSize*2.7*4.5;
+				sprite4.scale.z = 1;
+// 				scene1.add(sprite4);
+				sceneRTT.add(sprite4);
+			}		
+		
+			//earth
+			function InitEarth(){//goes to sceneRTTEarth, RTT texutre
+				geometry = new THREE.SphereGeometry(scaleEarthSphereSize, 40, 40);
+				earth = new THREE.Mesh( geometry, material_Earth );
+// 				sceneRTTEarth.add(earth);
+								
+				var geometry2 = new THREE.SphereGeometry(scaleEarthSphereSize+2, 40, 40);
+				clouds = new THREE.Mesh( geometry2, material_Earth_clouds );
+// 				clouds.receiveShadow = true;
+				clouds.castShadow = true;	
+// 				sceneRTTEarth.add(clouds);
+				
+				//earth slant
+// 				earth.rotation.z = - 45 * Math.PI / 180;
+// 				clouds.rotation.z = earth.rotation.z;
+				pivotPoint = new THREE.Object3D();
+				pivotPoint.rotation.set(0, 0, -23.5 * Math.PI / 180, 'XYZ');
+				pivotPoint.add(earth);
+				pivotPoint.add(clouds);
+				sceneRTTEarth.add( pivotPoint );
+			}						
+		
+			//black hole (plane shader)
+			function SpreadPlaneToScreen(cam){//to spread the plane with a 2D shader across the entire screen (cameraRTT spread over the screen)
+				//setting the plane to "cover" the screen
+				cam.position.x = 0;
+				cam.position.y = 0;					
+// 				views[0].camera.position.z = window.innerWidth/3.;//get this automatically
+				
+				vFOV0 = cam.fov * Math.PI / 180;        // convert vertical fov to radians
+				dist = window.innerHeight/(2. * Math.tan( vFOV0 / 2. ));
+// 				var aspect = window.innerWidth / window.innerHeight;
+// 				var dist = (window.innerWidth/aspect) /(2. * Math.tan( vFOV / 2. ));
+// //				var height = 2 * Math.tan( vFOV / 2 ) * dist; // visible height
+// //				var aspect = window.width / window.height;
+// //				var width = height * aspect;                  // visible width
+				cam.position.z = 1.0*dist;//get this automatically
+				
+				cam.lookAt(new THREE.Vector3(0,0,0));
+				cam.up.set( 0, 1, 0 );
+			}			
+			function BlackHole(){//goes to sceneRTTBlackHole, RTT texture
+			//should I use RTT plane here
+				//1920 x 1080
+				quadgeometry = new THREE.PlaneBufferGeometry((window.innerWidth-scaleBlackHolePlaneFactor*1.33), (window.innerHeight-scaleBlackHolePlaneFactor/1.33));//scaling the hole to fit with other RTT textures
+				quad4 = new THREE.Mesh(quadgeometry, shaderMaterialBlackHole);
+				sceneRTTBlackHole.add(quad4);
+// 				SpreadPlaneToScreen(cameraRTT);//cameraRTT spread over the screen
+			}				
+				
+			//blue star (neutron star) 
+			function InitBlueStarCenter(){//goes to sceneRTT, RTT texutre
+				geometry_center = new THREE.SphereGeometry( scaleBlueStarSphereSize, 32, 32 );
+				var material 	= new THREE.MeshLambertMaterial( { color: 0xFFFFFF}  );
+				center 		= new THREE.Mesh( geometry_center, materialSun_blue );
+				sceneRTTNeutronStar.add( center );
+			}
+			function InitBlueStarSprites(){//goes to sceneRTT, RTT texutre
+				// sun-sprite
+				sprite_blue = new THREE.Sprite(new THREE.SpriteMaterial({
+					map: texture_Sun_Sprite,
+					transparent: true,
+					blending: THREE.AdditiveBlending,
+					useScreenCoordinates: true,
+					color:0x3399cc,//cyan
+					depthWrite: true,
+					depthTest: true,
+					alphaTest: 0.2
+				}));
+				sprite_blue.scale.x = scaleBlueStarSphereSize*1.0*4.7;
+				sprite_blue.scale.y = scaleBlueStarSphereSize*1.0*4.7;
+				sprite_blue.scale.z = 1.;
+				sceneRTTNeutronStar.add(sprite_blue);
+
+				sprite2_blue = new THREE.Sprite(new THREE.SpriteMaterial({
+					map: texture_sprite2,
+					transparent: true,
+					blending: THREE.AdditiveBlending,
+					useScreenCoordinates: true,
+					color: 0xddddff,//0x5555aa,//0xffffff
+					depthWrite: false,
+					depthTest: false,
+					alphaTest: 0.2, 
+	// 				rotation: Math.PI / 4,
+				}));
+				sprite2_blue.scale.x = scaleBlueStarSphereSize*2.7*5.1;
+				sprite2_blue.scale.y = scaleBlueStarSphereSize*2.7*5.1;
+				sprite2_blue.scale.z = 1;
+				sceneRTTNeutronStar.add(sprite2_blue);
+
+				sprite3_blue = new THREE.Sprite(new THREE.SpriteMaterial({
+					map: texture_sprite2,
+					transparent: true,
+					blending: THREE.AdditiveBlending,
+					useScreenCoordinates: true,
+					color: 0x0099ff,//0x3399cc,//cyan//0x66ffff,
+					depthWrite: false,
+					depthTest: true,
+					alphaTest: 0.2,
+				}));
+				sprite3_blue.scale.x = scaleBlueStarSphereSize*2.7*4.5;
+				sprite3_blue.scale.y = scaleBlueStarSphereSize*2.7*4.5;
+				sprite3_blue.scale.z = 1;
+				sceneRTTNeutronStar.add(sprite3_blue);
+
+				sprite4_blue = new THREE.Sprite(new THREE.SpriteMaterial({
+					map: texture_sprite2,
+					transparent: true,
+					blending: THREE.AdditiveBlending,
+					useScreenCoordinates: true,
+					color: 0x3399cc,//cyan0x0000ff,
+					depthWrite: false,
+					depthTest: true,
+					alphaTest: 0.2,
+				}));
+				sprite4_blue.scale.x = scaleBlueStarSphereSize*2.7*5.5;
+				sprite4_blue.scale.y = scaleBlueStarSphereSize*2.7*5.5;
+				sprite4_blue.scale.z = 1;
+				sceneRTTNeutronStar.add(sprite4_blue);
+			}		
+					
+				
+			//point cloud
+			function InitPointCloud(point_list){
+				geometry = new THREE.Geometry();
+				
+				numObjects = point_list.length;
+				
+				for ( i = 0; i < numObjects; ++i ){
+					vector = new THREE.Vector3( 0, 0, 0 );
+					geometry.vertices.push(vector);
+				}
+      
+				stars = new THREE.PointCloud( geometry, shaderMaterial );
+				stars.dynamic = true;
+				stars.sortParticles = true;
+				
+				//init positions
+				var vertices = stars.geometry.vertices;
+				for( var v = 0, len = vertices.length; v != len ; ++v ){
+					vertices[v].x = point_list[v].x;
+					vertices[v].y = point_list[v].y;
+					vertices[v].z = 0;//0
+
+					//kind: 0 star, 1 earth, 2 black hole, 3 neutron star
+					attributes.texIndex.value.push(point_list[v].k);//0,1,2,3
+				}
+				
+				//size and color
+				var values_size = attributes.size.value;
+				var values_color = attributes.customColor.value;
+				for( var v = 0; v < vertices.length; v++ ){ //colors
+					values_color[ v ] = new THREE.Color();
+					
+					//stars
+					values_size[ v ] = 20000;
+					values_color[ v ].setRGB(1.0,1.0,1.0);
+				}	  
+	  
+				scene1.add( stars );
+			}			
+				
+				
+			function InitShaderUniforms(){//orange clock initial position set here		//text blob initial position set here
+				//clock
+				quadmaterial.uniforms.mouse.value.x = 0.3;//mouse.x;
+				quadmaterial.uniforms.mouse.value.y = 0.7;//mouse.y;	
+				mouse.x = 0.3;//need to also init mouse at the same position beacuse, the value is wrong otherwise
+				mouse.y = 0.7;
+				
+				//init text blob position too
+				$('#blob').css({
+					left:  476,
+					top:   384
+				});
+								
+				//black hole
+				uniforms4.resolution.value.x = window.innerWidth;
+				uniforms4.resolution.value.y = window.innerHeight;	
+				
+				//point cloud
+				attributes.rotation.value = 45;
+			}
+
+			function onWindowResize() {
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+// 				cameraRTT.aspect = window.innerWidth / window.innerHeight;
+// 				cameraRTT.updateProjectionMatrix();
+				
+				renderer.setSize( window.innerWidth, window.innerHeight );
+			}
+			function onDocumentMouseMove( event ) {						//#blob movement	//mouse snap to blue clock
+				mouse.x = ( event.clientX / window.innerWidth ) * 1 ;
+				mouse.y = - ( event.clientY / window.innerHeight ) + 1;
+				
+				//mouse snaps to blue clock if in vincinity
+				if(mouse.x>0.92 && mouse.x<0.96 && mouse.y>0.08 && mouse.y<0.14) {
+					 mouse.x = 0.94;
+					 mouse.y = 0.11;
+				}				
+				
+				quadmaterial.uniforms.mouse.value.x = mouse.x;
+				quadmaterial.uniforms.mouse.value.y = mouse.y;	
+
+				//distance to point (vec2 position = vec2(0.8, 0.3);)
+// 				distance = Math.sqrt((mouse.x - 0.8)*(mouse.x - 0.8) + (mouse.y - 0.3)*(mouse.y - 0.3));
+// 				console.log(distance);
+
+				//move text blob
+				$('#blob').css({
+					left:  event.pageX - 100,
+					top:   event.pageY + 60
+				});
+			}			
+			function onDocumentTouchMove( event ) {//touch for plane shaders		//#blob movement	//touch snap to blue clock
+				event.preventDefault();
+
+				//[0,0] lower left to [1, 1] upper right
+				touch.x = (event.touches[ 0 ].pageX)/window.innerWidth*1;
+				touch.y = 1.0 - (event.touches[ 0 ].pageY)/window.innerHeight*1;
+
+				//touch snaps to blue clock if in vincinity
+				//console.log(touch.x, touch.y);
+				if(touch.x>0.92 && touch.x<0.96 && touch.y>0.08 && touch.y<0.14) {
+					 touch.x = 0.9405;
+					 touch.y = 0.11;
+				}
+				
+				quadmaterial.uniforms.mouse.value.x = touch.x;
+				quadmaterial.uniforms.mouse.value.y = touch.y;	
+				
+				//to do correct distance calculations in animate()
+				mouse.x = touch.x;
+				mouse.y = touch.y;
+				
+				//move text blob
+				$('#blob').css({
+					left:  event.touches[ 0 ].pageX - 100,
+					top:   event.touches[ 0 ].pageY + 60
+				});			
+			}			
+			function touchHandler(event){//mapping touch events to mouse events
+				var touches = event.changedTouches, first = touches[0], type = "";
+			
+				switch(event.type){
+					case "touchstart": type = "mousedown"; break;
+					case "touchmove":  type="mousemove"; break;
+					case "touchend":   type="mouseup"; break;
+					default: return;
+				}
+				var simulatedEvent = document.createEvent("MouseEvent");
+				simulatedEvent.initMouseEvent(type, true, true, window, 1,
+										first.screenX, first.screenY,
+										first.clientX, first.clientY, false,
+										false, false, false, 0/*left*/, null);
+				first.target.dispatchEvent(simulatedEvent);
+// 				event.preventDefault();
+			}			
+			function AddListeners(){
+				window.addEventListener( 'resize', onWindowResize, false );
+				window.addEventListener( 'mousemove', onDocumentMouseMove, false );	
+				window.addEventListener( 'touchmove', onDocumentTouchMove, false );
+				window.addEventListener( 'contextmenu', function(e) { e.preventDefault(); }); //prevent context menu on right-click/long touch
+				
+				//mapping touch to mouse
+				window.addEventListener("touchstart", touchHandler, true);
+// 				window.addEventListener("touchmove", touchHandler, true);
+				window.addEventListener("touchend", touchHandler, true);
+				window.addEventListener("touchcancel", touchHandler, true);					
+			}
+			
+			function gravitationalTimeDilation(mass, radius, distance){//working with pixel values
+				//var result = Math.sqrt( 1 - ( 2*G_const*mass ) / ( (radius)*c_const*c_const )  );//original equation (G_const = 6.67384e-11;, c_const = 299792458.0;)
+				var r_ref = reference_clock_distance_to_center / radius;
+				var r_rel = distance / radius;
+				if(r_rel < 1.0) r_rel = 1.0;
+				var result = Math.sqrt(1. - 2. * mass / r_rel) / Math.sqrt(1. - 2. * mass / r_ref);//var result = Math.sqrt(1. - 2. * mass / r_rel);
+				return result;
+			}
+			function dilateTime(delta0){
+				for (i = 0 ; i < numObjects ; i++ ){//currently we never have multiple objects, so numObjects = 1 (except for "default")
+					distance = Math.sqrt((16./9.*mouse.x - pointVec2Array[i].x)*(16./9.*mouse.x - pointVec2Array[i].x) + (mouse.y - pointVec2Array[i].y)*(mouse.y - pointVec2Array[i].y));//need this to not only assign it on mousemove
+					
+					temp = gravitationalTimeDilation(timeMass[i], timeRadius[i], distance);// timeMass: compactness of object, timeRadius: radius of object
+					temp2 = temp*delta0;//clock animation parameter
+ 					
+// 					if(name=="star" && distance<0.35){//find out the radius of the object
+// 					    temp = 0.0;
+// 					    temp2 = temp*delta0;
+// 					}
+					
+					//clock animation for the case of multiple objects i.e. "random" (never the case now, so not done): 
+					//	should feed the position of objects to the gravitationalTimeDilation() function and calculate the distance from the blue clock
+				}
+			}
+			function animate() {
+				requestAnimationFrame( animate );
+	
+				{//clock slowdown (clock time) + text blob
+					var delta0 = 0.00001;
+					quadmaterial.uniforms.basetime.value += 80000 * delta0;//blue clock base time
+
+					temp = 1.0;//written in blob
+					temp2 = 1.0;//clock time/animation 
+
+					dilateTime(delta0);
+					quadmaterial.uniforms.time.value += 80000 * temp2;//clock					
+		
+					//filling the blob
+					blob.innerHTML = temp.toFixed(11);
+					blob.innerHTML += "&nbsp;&#xd7;&nbsp;<img src='"+image_clock+"' width='19'></img>";//times cross x &#xd7;
+				}//clock slowdown
+
+				{//shader uniform update
+					var delta = 15000 * 0.000005;
+					uniforms2.time.value += 0.2 * delta;//star
+					uniforms4.time.value +=  0.2 * delta;//black hole
+					materialSun_blue.uniforms.time.value += 0.5 * delta;//blue (neutron) star
+				}
+	
+				{//star sprite animation (sceneRTT)					uniforms2.time.value
+					sprite.scale.x = Math.abs(0.05*Math.sin(uniforms2.time.value ) + 1.0)*scaleStarSphereSize*1.0*4.5;
+					sprite.scale.y = Math.abs(0.05*Math.sin(uniforms2.time.value ) + 1.0)*scaleStarSphereSize*1.0*4.5;
+// 					sprite.scale.z = 1.;
+					sprite.material.rotation -= 0.03*Math.PI/180;
+					
+					sprite2.scale.x = Math.abs(0.1*Math.sin(uniforms2.time.value ) + 1.1)*scaleStarSphereSize*2.7*4.5;
+					sprite2.material.rotation += 0.03*Math.PI/180;
+
+					sprite3.scale.x = Math.abs(0.1*Math.cos(uniforms2.time.value ) + 1.1)*scaleStarSphereSize*2.7*4.5;
+					sprite3.scale.y = Math.abs(0.1*Math.sin(uniforms2.time.value ) + 1.1)*scaleStarSphereSize*2.7*4.5;
+					sprite3.material.rotation -= 0.05*Math.PI/180;
+				
+					sprite4.scale.x = Math.abs(1.3*Math.cos(uniforms2.time.value *0.1))*scaleStarSphereSize*2.7*4.5;
+					sprite4.scale.y = Math.abs(1.3*Math.sin(uniforms2.time.value *0.1))*scaleStarSphereSize*2.7*4.5;
+					sprite4.material.rotation += 0.1*Math.PI/180;
+				}	
+				{//blue star (neutron star) sprite animation
+					sprite_blue.scale.x = Math.abs(0.004*Math.sin(materialSun_blue.uniforms.time.value ) + 1.0)*scaleBlueStarSphereSize*1.0*4.9;
+					sprite_blue.scale.y = Math.abs(0.004*Math.sin(materialSun_blue.uniforms.time.value ) + 1.0)*scaleBlueStarSphereSize*1.0*4.9;
+					sprite_blue.material.rotation -= 0.03*Math.PI/180;
+
+					sprite2_blue.scale.x = Math.abs(0.01*Math.sin(materialSun_blue.uniforms.time.value ) + 1.1)*scaleBlueStarSphereSize*2.7*6.0;
+					sprite2_blue.material.rotation += 0.3*Math.PI/180;
+					
+					sprite3_blue.scale.x = Math.abs(0.12*Math.cos(materialSun_blue.uniforms.time.value ) + 1.1)*scaleBlueStarSphereSize*2.7*5.9;
+					sprite3_blue.scale.y = Math.abs(0.12*Math.sin(materialSun_blue.uniforms.time.value ) + 1.1)*scaleBlueStarSphereSize*2.7*5.9;
+					sprite3_blue.material.rotation -= 0.05*Math.PI/180;	
+					
+					sprite4_blue.scale.x = Math.abs(0.5*Math.cos(materialSun_blue.uniforms.time.value *0.1))*scaleBlueStarSphereSize*2.7*5.9;
+					sprite4_blue.scale.y = Math.abs(0.5*Math.sin(materialSun_blue.uniforms.time.value *0.1))*scaleBlueStarSphereSize*2.7*5.9;
+					sprite4_blue.material.rotation += 0.1*Math.PI/180;					
+				}
+	
+				{//Earth rotation
+					earth.rotation.y += 0.01;
+					clouds.rotation.y = earth.rotation.y;
+				}
+	
+				{//render
+					renderer.render( scene1, camera );//clock and background
+					
+					cameraRTT.position.z = RTTcameraDistanceStar;
+	// 				renderer.render( sceneRTT, cameraRTT );//has the star
+					renderer.render( sceneRTT, cameraRTT, RTTtextureSun, true );//has the star (rendered to texture)
+					
+					cameraRTT.position.z = RTTcameraDistanceEarth;
+	// // 				renderer.render( sceneRTTEarth, cameraRTT );//has the Earth
+					renderer.render( sceneRTTEarth, cameraRTT, RTTtextureEarth, true  );//has the Earth (rendered to texture)
+					
+					cameraRTT.position.z = RTTcameraDistanceHole;
+	// 				renderer.render( sceneRTTBlackHole, cameraRTT );//has the Black Hole
+					renderer.render( sceneRTTBlackHole, cameraRTT, RTTtextureBlackHole, true );//has the Black Hole (rendered to texture)
+					
+					cameraRTT.position.z = RTTcameraDistanceNeutron;
+	// 				renderer.render( sceneRTTNeutronStar, cameraRTT );//has the Neutron Star
+					renderer.render( sceneRTTNeutronStar, cameraRTT, RTTtextureNeutronStar, true );//has the Black Hole (rendered to texture)
+				}
+			}			
+
+			function InitPreset(option){//clock shader material and background shader material
+				{//fill point_list, pointVec2Array ; set background (gravity wells) scaling parameters ; set time parameters
+				//scale parameters (background gravity wells)
+				scaleWarp1 = [];
+				scaleWarp2 = [];
+				
+				//time parameters (radius, mass)
+				timeRadius = [];
+				timeMass = [];
+				
+				point_list = [];
+				pointVec2Array = [];
+				var numObjects = 0;
+				if(option=="default"){
+					point_list = [{x:300,y:300,k:0},{x:-300.0,y:-300.0,k:1},{x:300.0,y:-300.0,k:2},{x:-300.0,y:300.0,k:3}];
+					numObjects = point_list.length;
+					for (i = 0 ; i < numObjects ; i++ ){//filling pointVec2Array ; set scaling parameters (background gravity wells); set time parameters
+						//interpolating from [-w/2,w/2] to [0,1.78] [-h,h]->[0,1]
+						var new_x = ((point_list[i].x+getWindowDimensions().width/2)/getWindowDimensions().width)*1.78;
+						var new_y = ((point_list[i].y+getWindowDimensions().height/2)/getWindowDimensions().height)*1;	
+						pointVec2Array.push(new THREE.Vector2(new_x,new_y));
+
+						//set scaling parameters (background gravity wells); set time parameters
+      // 						//point list (x-coordinate, y-coordinate, kind)
+      // 						//kind: 0 star, 1 earth, 2 black hole, 3 neutron star
+						if(point_list[i].k==0) {//star
+							scaleWarp1.push(scaleWarp1_Star);
+							scaleWarp2.push(scaleWarp2_Star);
+							//time parameters
+							timeRadius.push(timeSunRadius);
+							timeMass.push(timeSunMass);
+						}
+						if(point_list[i].k==1) {//earth
+							scaleWarp1.push(scaleWarp1_Earth);
+							scaleWarp2.push(scaleWarp2_Earth);
+							//time parameters
+							timeRadius.push(timeEarthRadius);
+							timeMass.push(timeEarthMass);
+						}
+						if(point_list[i].k==2) {//hole
+							scaleWarp1.push(scaleWarp1_Hole);
+							scaleWarp2.push(scaleWarp2_Hole);
+							//time parameters
+							timeRadius.push(timeHoleRadius);
+							timeMass.push(timeHoleMass);
+						}
+						if(point_list[i].k==3) {//neutron
+							scaleWarp1.push(scaleWarp1_Neutron);
+							scaleWarp2.push(scaleWarp2_Neutron);
+							//time parameters
+							timeRadius.push(timeNeutronRadius);
+							timeMass.push(timeNeutronMass);
+							
+						}	
+// 						console.log(point_list[i].k, scaleWarp1[i], scaleWarp2[i]);
+					};
+// 					console.log(scaleWarp1, scaleWarp2);
+				}
+				if(option=="earth"){
+					//point list (x-coordinate, y-coordinate, kind)
+					//kind: 0 star, 1 earth, 2 black hole, 3 neutron star
+					point_list = [{x:0,y:0,k:1}];
+					numObjects = point_list.length;
+					for (i = 0 ; i < numObjects ; i++ ){
+						//interpolating from [-w/2,w/2] to [0,1.78] [-h,h]->[0,1]
+						var new_x = ((point_list[i].x+getWindowDimensions().width/2)/getWindowDimensions().width)*1.78;
+						var new_y = ((point_list[i].y+getWindowDimensions().height/2)/getWindowDimensions().height)*1;
+						pointVec2Array.push(new THREE.Vector2(new_x,new_y));
+
+						//set scaling parameters (background gravity wells)
+						scaleWarp1.push(scaleWarp1_Earth);
+						scaleWarp2.push(scaleWarp2_Earth);
+						
+						//time parameters
+						timeRadius.push(timeEarthRadius);
+						timeMass.push(timeEarthMass);
+					};   
+				}
+				if(option=="star"){
+					//point list (x-coordinate, y-coordinate, kind)
+					//kind: 0 star, 1 earth, 2 black hole, 3 neutron star
+					point_list = [{x:0,y:0,k:0}];
+					numObjects = point_list.length;
+					for (i = 0 ; i < numObjects ; i++ ){
+						//interpolating from [-w/2,w/2] to [0,1.78] [-h,h]->[0,1]
+						var new_x = ((point_list[i].x+getWindowDimensions().width/2)/getWindowDimensions().width)*1.78;
+						var new_y = ((point_list[i].y+getWindowDimensions().height/2)/getWindowDimensions().height)*1;	
+						pointVec2Array.push(new THREE.Vector2(new_x,new_y));
+
+						//set scaling parameters (background gravity wells)
+						scaleWarp1.push(scaleWarp1_Star);
+						scaleWarp2.push(scaleWarp2_Star);
+						
+						//time parameters
+						timeRadius.push(timeSunRadius);
+						timeMass.push(timeSunMass);
+					};  
+				}
+				if(option=="neutron"){
+					//point list (x-coordinate, y-coordinate, kind)
+					//kind: 0 star, 1 earth, 2 black hole, 3 neutron star
+					point_list = [{x:0,y:0,k:3}];
+					numObjects = point_list.length;
+					for (i = 0 ; i < numObjects ; i++ ){
+						//interpolating from [-w/2,w/2] to [0,1.78] [-h,h]->[0,1]
+						var new_x = ((point_list[i].x+getWindowDimensions().width/2)/getWindowDimensions().width)*1.78;
+						var new_y = ((point_list[i].y+getWindowDimensions().height/2)/getWindowDimensions().height)*1;
+						pointVec2Array.push(new THREE.Vector2(new_x,new_y));
+
+						//set scaling parameters (background gravity wells)
+						scaleWarp1.push(scaleWarp1_Neutron);
+						scaleWarp2.push(scaleWarp2_Neutron);
+						
+						//time parameters
+						timeRadius.push(timeNeutronRadius);
+						timeMass.push(timeNeutronMass);
+					};    
+				}
+				if(option=="hole"){
+					//point list (x-coordinate, y-cpointVec2Arrayoordinate, kind)
+					//kind: 0 star, 1 earth, 2 black hole, 3 neutron star
+					point_list = [{x:0,y:0,k:2}];
+					numObjects = point_list.length;
+					for (i = 0 ; i < numObjects ; i++ ){
+						//interpolating from [-w/2,w/2] to [0,1.78] [-h,h]->[0,1]
+						var new_x = ((point_list[i].x+getWindowDimensions().width/2)/getWindowDimensions().width)*1.78;
+						var new_y = ((point_list[i].y+getWindowDimensions().height/2)/getWindowDimensions().height)*1;	
+						pointVec2Array.push(new THREE.Vector2(new_x,new_y));
+
+						//set scaling parameters (background gravity wells)
+						scaleWarp1.push(scaleWarp1_Hole);
+						scaleWarp2.push(scaleWarp2_Hole);		
+						
+						//time parameters
+						timeRadius.push(timeHoleRadius);
+						timeMass.push(timeHoleMass);
+					};    
+				}
+				}//fill point_list, pointVec2Array ; set background (gravity wells) scaling parameters ; set time parameters
+				
+				//shader materials
+				{//clock material (added basetime)
+				quadmaterial = new THREE.ShaderMaterial({
+					uniforms: {
+						mouse: {
+							type: "v2",
+							value: new THREE.Vector2() 
+						},
+						time: {
+							type: "f",
+							value: 1.0
+						},
+						basetime: {
+							type: "f",
+							value: 1.0
+						}
+					},
+					vertexShader: document.getElementById( 'vertexShader' ).textContent,
+					fragmentShader: document.getElementById( 'fragmentShaderClock' ).textContent,
+					transparent: true
+				});//quad material
+				}
+				{//background material
+				quadmaterial2 = new THREE.ShaderMaterial({
+					uniforms: {
+						tDiffuse2: {
+							type: "t",
+							value: Texture2//background
+						},
+						scaleWarp1: {
+							type: "fv1",
+							value: scaleWarp1
+						},
+						scaleWarp2: {
+							type: "fv1",
+							value: scaleWarp2
+						},							
+						points: {
+							type: "v2v",
+							value: pointVec2Array
+						}
+					},
+					vertexShader: document.getElementById( 'vertexShader' ).textContent,
+					fragmentShader: '#define ARRAYMAX '+ pointVec2Array.length +'\n' + document.getElementById( 'fragmentShaderGravityWarp' ).textContent,
+					transparent: true
+				});//quad material
+				quadmaterial2.uniforms.tDiffuse2.value.wrapS = quadmaterial2.uniforms.tDiffuse2.value.wrapT = THREE.RepeatWrapping;
+				}
+			}
+		</script>
+		
+		<script>//main (parameters)
+		{//parameters
+			var x;
+			var customWidth = getWindowDimensions().width;
+			var customHeight = getWindowDimensions().height;
+			console.log(customWidth, customHeight);		
+		
+			var camera, scene1, renderer;
+			var mesh;//test sphere
+			var clock = new THREE.Clock();
+			var quadmaterial;//clock material
+			var mouse = new THREE.Vector3( 0, 0, 1 );//needs to initiate
+			var touch = new THREE.Vector3( 0, 0, 1 );//needs to initiate
+			var temp, temp2, distance = 0.0;
+			var blob = document.getElementById("blob");
+			var pivotPoint;//Earth pivot
+			var sprite, sprite2, sprite3, sprite4;//yellow star sprites
+			var sprite_blue, sprite2_blue, sprite3_blue, sprite4_blue;//blue star sprites (neutron)
+			
+			//scaling
+			var scaleBlackHolePlaneFactor = 800;//710; (being substracted, higher value results in a smaller texture)	//black hole
+			var scaleBlueStarSphereSize = 25;										//neutron star
+			var scaleStarSphereSize = 120;//50;//var size_Sun = 150;							//star
+			var scaleEarthSphereSize = 50;//var ssize = 50;									//earth
+			
+			//RTT
+			var cameraRTT;//, materialRTT, quad;
+			var sceneRTT, sceneRTTEarth, sceneRTTBlackHole;
+			var RTTtextureSun, RTTtextureEarth, RTTtextureBlackHole, RTTtextureNeutronStar;
+			
+			//point cloud
+// 			//point list (x-coordinate, y-coordinate, kind)
+// 			//kind: 0 star, 1 earth, 2 black hole, 3 neutron star
+			var point_list = [];
+			var pointVec2Array = [];
+
+			{//name, grid (URL parameters)
+			var name = "default";
+			if(getUrlVars()["n"]) name = getUrlVars()["n"];
+			
+			var grid = false;
+			var g;//URL variable holding a string of a "grid" boolean
+			if(getUrlVars()["g"]) {
+				g = getUrlVars()["g"];
+				if(g=='true') grid=true;
+				if(g=='false') grid=false;
+			}
+			}//name, grid
+			
+			{//scaling parameters (background gravity wells)
+			//background gravity wells scaling
+			var scaleWarp1 = [], scaleWarp2 = [];	
+
+			//set2: (TimeRelativity_09)
+			var scaleWarp1_Earth = 0.00000001;     			//warp effect radius
+			var scaleWarp2_Earth = 100;//40;//38.0;			//less - bigger circle 			(since everything has NormalBlending, the circle can be less)
+			var scaleWarp1_Star = 0.0015;// 0.000001;//0.0034
+			var scaleWarp2_Star = 100;//35.0;//18.0								(since everything has NormalBlending, the circle can be less)
+			var scaleWarp1_Neutron = 0.000012;//0.0003;
+			var scaleWarp2_Neutron = 500;//70;//50.0;//							(since everything has NormalBlending, the circle can be less)
+			var scaleWarp1_Hole = 0.0016;//0.0024;//0.0034
+			var scaleWarp2_Hole = 20.0;//22.0;//18.0								(need to keep the black center scaled properly)
+			
+			//RTT texture (object) scaling (i.e. distance of RTT camera) 
+			//less distance - bigger object (RTT texture)
+			//set1:
+			var RTTcameraDistanceEarth = 1200;
+			var RTTcameraDistanceStar = 900;
+			var RTTcameraDistanceNeutron = 1800;
+			var RTTcameraDistanceHole = 850;
+			}
+			
+			{//time relativity parameters
+			var reference_clock_distance_to_center = 0.87306046063;//1920x1080 full screen
+			
+			{//pixel distances values
+				//Earth
+				var timeEarthRadius = 0.058;// "radius": radius of graphics object' surface (for distance relative to surface)
+				var timeEarthMass =  7.0e-10;// "mass": relativistic compactness = G M / (R c^2)
+				
+				//Sun
+				var timeSunRadius = 0.19;// "radius": radius of graphics object' surface (for distance relative to surface)
+				var timeSunMass = 2.1e-6;// "mass": relativistic compactness = G M / (R c^2)
+				
+				//Neutron star
+				var timeNeutronRadius = 0.021;// "radius": radius of graphics object' surface (for distance relative to surface)
+				var timeNeutronMass = 0.2;// "mass": relativistic compactness = G M / (R c^2)
+				
+				//Black Hole
+				var timeHoleRadius = 0.09;// "radius": radius of graphics object' surface (for distance relative to surface)
+				var timeHoleMass = 0.5;// "mass": relativistic compactness = G M / (R c^2)
+			}
+			
+			//time parameters (radius, mass)
+			var timeRadius = [];
+			var timeMass = [];
+			}
+		}
+		{//textures
+			var Texture1 = new THREE.ImageUtils.loadTexture( 'Images/tex_noise2.png' );
+			var Texture2 = new THREE.ImageUtils.loadTexture( 'Images/Starsinthesky_dark.jpg' );
+			if(grid == true) {Texture2 = THREE.ImageUtils.loadTexture( 'Images/Starsinthesky_grid.jpg'  );}
+			Texture2.wrapS = Texture2.wrapT = THREE.RepeatWrapping;
+			Texture1.wrapS = Texture1.wrapT = THREE.RepeatWrapping;
+			
+			//planet sprite
+			var texture = new THREE.ImageUtils.loadTexture( 'Images/tex_dot.png' );
+			texture.minFilter = texture.magFilter = THREE.LinearFilter;
+			var spriteMaterial = new THREE.SpriteMaterial({ map: texture});//, useScreenCoordinates: false } );//, alignment: spriteAlignment	
+			
+			//star sprites
+			//transparent sprites
+			var texture_Sun_Sprite = THREE.ImageUtils.loadTexture( 'Images/tex_sprite1.png');
+			var texture_sprite2 = THREE.ImageUtils.loadTexture('Images/tex_sprite9.png');
+			//shaders
+			var texture_star = THREE.ImageUtils.loadTexture( 'Images/tex_lava.jpg');//yellow
+			var texture_clouds = THREE.ImageUtils.loadTexture( "Images/tex_cloud.png" ); 
+			
+			//earth
+			var texture_earth_diffuse = THREE.ImageUtils.loadTexture( 'Images/earth.jpg');//1k
+			material_Earth = new THREE.MeshPhongMaterial( { //causes: extension directive should occur before any non-preprocessor tokens in three 71  
+					color: 0xffffff, 
+					map: texture_earth_diffuse, 
+					specular: 0x404040 , //bright
+					shininess: 5,
+					transparent : false,
+					opacity     : 1.0,
+			});	
+			var texture_earth_clouds = THREE.ImageUtils.loadTexture( 'Images/earth_clouds_nontrans.png');//1k
+			material_Earth_clouds = new THREE.MeshLambertMaterial({
+					map: texture_earth_clouds,
+					transparent: true,
+					blending: THREE.CustomBlending,
+					blendSrc: THREE.SrcAlphaFactor,
+					blendDst: THREE.OneMinusSrcColorFactor,
+					blendEquation: THREE.AddEquation,
+					depthWrite: false
+			});	
+			
+			//neutron star
+			var texture_blue_star = THREE.ImageUtils.loadTexture( 'Images/tex_lava4.jpg');//cyan
+			
+			//black hole
+			var texture_black = THREE.ImageUtils.loadTexture( 'Images/tex_black.jpg');
+			
+			//clock
+			var image_clock = 'Images/Icons/icon_clock.png';//small clock (big ones are made in the shaders)
+			//menu
+			var image_arrow_massEN 		= 'Images/Icons/menu_mass_en.png'; 
+			var image_arrow_massDE 		= 'Images/Icons/menu_mass_de.png'; 
+			var image_button_earth 		= 'Images/Icons/icon_earth.png';
+			var image_button_sun   		= 'Images/Icons/icon_sun.png';
+			var image_button_neutron 	= 'Images/Icons/icon_neutronstar.png';
+			var image_button_blackhole 	= 'Images/Icons/icon_blackhole.png';
+			var image_button_random		= 'Images/Icons/icon_random.png';//not used
+			var image_button_grid		= 'Images/Icons/icon_grid.png';//not used
+		}
+		{//RTT textures
+			//need RGBA for transparency
+			RTTtextureSun = new THREE.WebGLRenderTarget( customWidth, customHeight, { minFilter: THREE.LinearFilter, magFilter: THREE.NearestFilter, format: THREE.RGBAFormat } );
+			RTTtextureEarth = new THREE.WebGLRenderTarget( customWidth, customHeight, { minFilter: THREE.LinearFilter, magFilter: THREE.NearestFilter, format: THREE.RGBAFormat } );
+			RTTtextureBlackHole = new THREE.WebGLRenderTarget( customWidth, customHeight, { minFilter: THREE.LinearFilter, magFilter: THREE.NearestFilter, format: THREE.RGBAFormat } );
+			RTTtextureNeutronStar = new THREE.WebGLRenderTarget( customWidth, customHeight, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat } );
+		}		
+		{//shader materials (clock material and background material moved to InitPreset())
+			{//star (Sun)
+				uniforms2 = {
+					time: { type: "f", value: 1.0 },
+					texture1: { type: "t", value: texture_clouds },
+					texture2: { type: "t", value: texture_star}
+				};
+				uniforms2.texture1.value.wrapS = uniforms2.texture1.value.wrapT = THREE.RepeatWrapping;
+				uniforms2.texture2.value.wrapS = uniforms2.texture2.value.wrapT = THREE.RepeatWrapping;	
+				attributes = {
+					displacement: {type: 'f',value: [] }// an empty array 
+				};
+				materialSun = new THREE.ShaderMaterial( {
+					uniforms: uniforms2, 
+					attributes: attributes,
+ 					vertexShader: document.getElementById( 'vertexShaderStar' ).textContent,
+ 					fragmentShader: document.getElementById( 'fragmentShaderStar' ).textContent,
+					side: THREE.DoubleSide
+				} );
+			}
+			{//blue star material (neutron star) (clone of a star material)
+				var materialSun_blue = materialSun.clone();
+				materialSun_blue.uniforms.texture2.value = texture_blue_star;
+				materialSun_blue.uniforms.texture1.value.wrapS = materialSun_blue.uniforms.texture1.value.wrapT = THREE.RepeatWrapping;
+				materialSun_blue.uniforms.texture2.value.wrapS = materialSun_blue.uniforms.texture2.value.wrapT = THREE.RepeatWrapping;					
+			}
+			{//black hole
+				uniforms4 = {
+					time: { type: "f", value: 1.0 },
+ 					resolution: { type: "v2", value: new THREE.Vector2() },
+					texture1:   { type: "t", value: texture_black },
+					texture2:   { type: "t", value: Texture1 },
+					mouseX: { type: "f", value: 0.0 },
+ 					mouseY: { type: "f", value: 0.0 }
+				};
+				uniforms4.texture1.value.wrapS = uniforms4.texture1.value.wrapT = THREE.RepeatWrapping;
+				uniforms4.texture2.value.wrapS = uniforms4.texture2.value.wrapT = THREE.RepeatWrapping;	
+				uniforms4.resolution.value.x = window.innerWidth;
+				uniforms4.resolution.value.y = window.innerHeight;
+				
+				shaderMaterialBlackHole = new THREE.ShaderMaterial( {
+					uniforms:       uniforms4,
+					vertexShader:   document.getElementById( 'vertexShaderBlackHole' ).textContent,
+					fragmentShader: document.getElementById( 'fragmentShaderBlackHole' ).textContent,
+					side: THREE.DoubleSide
+				});	
+			}
+			{//point cloud (can use RTT) shader material
+				attributes = {
+					size: {  type: 'f', value: [] },
+					customColor: { type: 'c', value: [] },
+					rotation: { type: "f", value: 1.0 },
+					texIndex: { type: 'f', value: [] }
+				};
+				uniformsPC = {
+					color:     { type: "c", value: new THREE.Color( 0xffffff ) },
+					texture:   { type: "t", value: RTTtextureSun },
+					texture2:   { type: "t", value: RTTtextureEarth },
+					texture3:   { type: "t", value: RTTtextureBlackHole },
+					texture4:   { type: "t", value: RTTtextureNeutronStar },
+				};		
+				shaderMaterial = new THREE.ShaderMaterial( {
+					uniforms:    	uniformsPC,
+					attributes:     attributes,
+					vertexShader:   document.getElementById( 'vertexshaderPC' ).textContent,
+					fragmentShader: document.getElementById( 'fragmentshaderPC' ).textContent,
+					
+					//planet
+					depthWrite: false, 
+					opacity     : 1.0,
+					transparent : true,
+					blending: THREE.NormalBlending //no different blending for different objects - all now work with NormalBlending (black hole has threshold transparency, stars got transparent sprites)
+				});
+				shaderMaterial.needsUpdate = true;
+					
+// 				//different blending effects per object - Commented Out
+// 				if(name == 'earth') shaderMaterial.blending = THREE.NormalBlending;
+// 				if(name == 'star') shaderMaterial.blending = THREE.AdditiveBlending;
+// 				if(name == 'neutron') shaderMaterial.blending = THREE.NormalBlending;
+// 				if(name == 'hole') shaderMaterial.blending = THREE.AdditiveBlending;
+// 				if(name == 'default') shaderMaterial.blending = THREE.NormalBlending;
+			}		
+		}
+		
+		window.onload = function () { 
+		    	x = InitPreset(name);
+		    		
+		    	x = InitThreeRenderer(customWidth, customHeight, container);
+			x = InitThreeScene();
+			x = InitCameras();
+			
+		    	x = InitThreeRTTScenes();
+			x = InitRTTCameras();
+			
+			x = InitThreeLights();//also RTT lights
+
+		    	//objects
+// 		    	InitTestSphere();
+			InitShaderPlanes();//background and clock plane
+// 			InitPlanetSprite();
+			
+			//star (RTT)
+			InitCenter();
+			InitStarSprites();
+			//Earth (RTT)
+			InitEarth();
+			//Black Hole (RTT)
+			BlackHole();
+			//Blue Star (Neutron Star)
+			InitBlueStarCenter();
+			InitBlueStarSprites();		
+			
+			//point cloud
+			InitPointCloud(point_list);
+			
+			InitShaderUniforms();
+			AddListeners();
+			
+			animate();
+		}// window.onload
+		</script>
+		
+		<script>//jquery radio buttons 
+		$(document).ready(function(){
+			console.log("ready");
+			document.body.style.visibility = "visible";				
+		
+			{//radio buttons 
+				$( "#radioSetup" ).buttonset();
+				$('#radioSetup input').on('change', function() {
+					var radioID = $('input[name="radioSetupOptions"]:checked')[0].id;
+					
+					if(radioID == "radio1m") {//earth
+						name = "earth";
+					}
+					if(radioID == "radio2m") {//star
+						name = "star";
+					}
+					if(radioID == "radio3m") {//neutron star
+						name = "neutron";
+					}
+					if(radioID == "radio4m") {//black hole
+						name = "hole";
+					}
+					if(radioID == "radio5m") {//default setup
+						name = "default";
+					}
+					if(radioID == "radio6m") {//grid on/off
+						grid = !grid;
+						
+						//put the value in the URL as string
+						if(grid == true) g='true';
+						if(grid == false) g='false';
+
+						this.checked = false;
+					}
+					//no grid parameter
+					if(getUrlVars()["lang"]) window.location.href = window.location.pathname+"?n="+name+"&lang="+getUrlVars()["lang"];
+					if(!getUrlVars()["lang"]) window.location.href = window.location.pathname+"?n="+name+"&lang="+lang;	
+				});
+			}		  
+		});
+		</script>
+		
+		<script>//standard buttons
+			function AddDialog(elementName, content){//needs .helper class
+				$(elementName).empty();
+				
+				//vertical alignment of the image within a div
+				var content2 = "<span class='helper'></span>";
+				$(content2).appendTo(elementName);
+				
+				$(content).appendTo(elementName);
+				$(elementName).dialog("open");
+			}
+			
+			{///parameters
+			//button positioning
+			var standard1_left = 2;
+			var standard2_left = 102;
+			var standard3_left = 202;
+			var standard_bottom = 12;
+			
+			//dialog parameters
+			var dialog_height = customHeight;
+			var dialog_width = customWidth-4;
+			var dialog_left = 0;
+			var dialog_up = 0;			
+			}
+			{//load images
+			var button_reset = "Images/Icons/icon_blue_reload.png";
+			var button_info = "Images/Icons/icon_blue_help.png";
+			var button_language = "Images/Icons/icon_blue_DE.svg";	
+			var lang = "en";			
+			
+			//language button image //change icon image (offer opposite image)
+			if(getUrlVars()["lang"] == "en") button_language = "Images/Icons/icon_blue_DE.svg";
+			if(getUrlVars()["lang"] == "de") button_language = "Images/Icons/icon_blue_EN.svg";
+			
+			//help screen images
+			var info_imageEN ='Images/1206_time_relativity_help_screens_ES_interactives_ENb.png';
+			var info_imageDE ='Images/1206_time_relativity_help_screens_ES_interactives_DE.png';			
+			var info_image_width = 1500;			
+			}			
+
+			$(function() 
+			{
+				{//reset button
+				$("#resetButton")
+				.text("") // sets text to empty
+				.css(
+					{ "z-index":"2",
+					"background":"rgba(0,0,0,0)", "opacity":"0.9", 
+					"position":"absolute", "bottom":standard_bottom+"px", "left":standard1_left+"px", 
+					"border": "none"
+					}) // adds CSS
+				.append("<img width='80' height='80' src="+button_reset+" />")
+				.button()
+				.click( 
+					function(){ 
+						window.location.reload(true);
+					});
+				}
+				
+				{//language change button
+				$("#languageButton")
+				.text("") // sets text to empty
+				.css(
+					{ "z-index":"2",
+					"background":"rgba(0,0,0,0)", "opacity":"0.9", 
+					"position":"absolute", "bottom":standard_bottom+"px", "left":standard2_left+"px", 
+					"border": "none"
+					}) // adds CSS
+				.append("<img width='80' height='80' src="+button_language+" />")
+				.button()
+				.click( 
+					function(){ 
+						//reload with different url parameter
+						if(getUrlVars()["lang"] == "en") lang="de";
+						if(getUrlVars()["lang"] == "de") lang="en";
+						if(!getUrlVars()["lang"]) lang="de";//had default values (en as default)
+						
+						window.location.href = window.location.pathname+"?n="+name+"&lang="+lang;//no grid parameter //+"&g="+g+
+					});
+				}
+				
+				{//info/help dialog - needs CSS setup and dialog parameters
+				$("#dialogHelp").dialog({
+					autoOpen: false,
+					modal: false,
+					dialogClass: "dlg-no-title",
+					resizable: false,
+					height: dialog_height,
+					width: dialog_width,
+ 					position: [dialog_left,dialog_up],//left, top
+					clickOutside: true, // clicking outside the dialog will close it
+					clickOutsideTrigger: "#infoButton"  // Element (id or class) that triggers the dialog opening 
+				})
+				.click( 
+					function(){ 
+						$("#dialogHelp").dialog("close");//close dialog
+					});	
+				}
+				
+				{//info/help button - needs #dialogHelp and AddDialog() function
+				$("#infoButton")
+				.text("") // sets text to empty
+				.css(
+					{ "z-index":"2",
+					"background":"rgba(0,0,0,0)", "opacity":"0.9", 
+					"position":"absolute", "bottom":standard_bottom+"px", "left":standard3_left+"px", 
+					"border": "none"
+					}) // adds CSS
+				.append("<img width='80' height='80' src="+button_info+" />")
+				.button()
+				.click( 
+					function(){ 
+						if(getUrlVars()["lang"] == "en") AddDialog("#dialogHelp", "<img src="+info_imageEN+" width="+info_image_width+" style='vertical-align:middle;'></img>");
+						if(getUrlVars()["lang"] == "de") AddDialog("#dialogHelp", "<img src="+info_imageDE+" width="+info_image_width+" style='vertical-align:middle;'></img>");
+						if(!getUrlVars()["lang"]) AddDialog("#dialogHelp", "<img src="+info_imageEN+" width="+info_image_width+" style='vertical-align:middle;'></img>");//had default values (en as default)						
+					});
+				}
+			});
+		</script>
+ 		
+		<script>//mass arrow images / radio button images
+			if(getUrlVars()["lang"] == "en") document.getElementById("radioSetup").insertAdjacentHTML("afterbegin", "<img src='"+image_arrow_massEN+"' width='164' style='position: absolute;left:5px;'></img>");
+			if(getUrlVars()["lang"] == "de") document.getElementById("radioSetup").insertAdjacentHTML("afterbegin", "<img src='"+image_arrow_massDE+"' width='164' style='position: absolute;left:5px;'></img>");
+			if(!getUrlVars()["lang"]) document.getElementById("radioSetup").insertAdjacentHTML("afterbegin", "<img src='"+image_arrow_massEN+"' width='164' style='position: absolute;left:5px;'></img>");	
+			
+			{//radio button images
+			$('div[id="radioSetup"] label[for="radio1m"]').html('<img src=\"'+image_button_earth+'\" width="128px" height="128px"></img>');
+			$('div[id="radioSetup"] label[for="radio2m"]').html('<img src=\"'+image_button_sun+'\" width="128px" height="128px"></img>');
+			$('div[id="radioSetup"] label[for="radio3m"]').html('<img src=\"'+image_button_neutron+'\" width="128px" height="128px"></img>');
+			$('div[id="radioSetup"] label[for="radio4m"]').html('<img src=\"'+image_button_blackhole+'\" width="128px" height="128px"></img>');
+			$('div[id="radioSetup"] label[for="radio5m"]').html('<img src=\"'+image_button_random+'\" width="128px" height="128px"></img>');
+			$('div[id="radioSetup"] label[for="radio6m"]').html('<img src=\"'+image_button_grid+'\" width="128px" height="128px"></img>');
+			}			
+		</script>
+	</body>
+</html>
