@@ -558,7 +558,8 @@
 				vRotation = rotation;
 				vTexIndex = texIndex;
 				vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
-				gl_PointSize = size * ( 100.0 / length( mvPosition.xyz ) );
+// 				gl_PointSize = size * ( 100.0 / length( mvPosition.xyz ) );
+  				gl_PointSize = 2056.;//vendor specific point-size limit (if the limit is smaller, the sprites will be smaller :( )
 				gl_Position = projectionMatrix * mvPosition;
 			}
 		</script>
